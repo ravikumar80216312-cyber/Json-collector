@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#101827">
+<title>JSON Collector</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1220;--panel:#111c2e;--line:#27364d;--muted:#9fb0c8;--text:#eef4ff;--accent:#72a7ff;--danger:#ff7777}
+*{box-sizing:border-box}body{margin:0;background:linear-gradient(140deg,#0b1220,#101b30);font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--text)}
+main{max-width:920px;margin:auto;padding:24px 16px 48px}.top{display:flex;gap:14px;align-items:center;margin-bottom:20px}.logo{width:48px;height:48px;border-radius:14px;display:grid;place-items:center;background:#1d3151;font-size:25px}.sub{color:var(--muted);margin-top:2px}h1{font-size:clamp(24px,4vw,34px);margin:0}h2{font-size:18px;margin:0 0 12px}.panel{background:rgba(17,28,46,.94);border:1px solid var(--line);border-radius:18px;padding:18px;margin:14px 0;box-shadow:0 10px 28px #0002}
+textarea{width:100%;min-height:180px;resize:vertical;background:#0b1424;color:var(--text);border:1px solid var(--line);border-radius:12px;padding:13px;font:14px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace}
+button,.filelabel{border:0;border-radius:11px;padding:11px 15px;font-weight:700;font-size:14px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.primary{background:var(--accent);color:#081326}.secondary,.filelabel{background:#22324b;color:var(--text);border:1px solid #354967}.danger{background:#3a2029;color:#ffd9d9;border:1px solid #71404a}.actions{display:flex;flex-wrap:wrap;gap:9px;margin-top:12px}input[type=file]{display:none}.hint{color:var(--muted);font-size:13px;margin:8px 0 0}.stats{display:flex;gap:10px;flex-wrap:wrap}.stat{background:#0b1424;border:1px solid var(--line);border-radius:12px;padding:12px 15px;min-width:130px}.num{font-size:23px;font-weight:800}.stat small{color:var(--muted)}.list{display:grid;gap:9px}.item{display:flex;gap:12px;align-items:center;justify-content:space-between;background:#0b1424;border:1px solid var(--line);padding:12px;border-radius:12px;min-width:0}.filename{font-weight:700;overflow-wrap:anywhere}.meta{color:var(--muted);font-size:12px}.item button{padding:7px 10px}.status{padding:10px 12px;border-radius:10px;margin-top:12px;display:none;white-space:pre-wrap}.status.ok{display:block;background:#102e28;color:#b7f6dd;border:1px solid #24614f}.status.err{display:block;background:#351b24;color:#ffd1d1;border:1px solid #6a3542}.warning{border-color:#715b2d;background:#241f15;color:#ffe8b0}.empty{color:var(--muted);padding:14px 0}.foot{color:var(--muted);font-size:12px;margin-top:18px}button:focus-visible,.filelabel:focus-within,textarea:focus{outline:2px solid var(--accent);outline-offset:2px}
+@media(max-width:560px){main{padding:18px 12px 36px}.panel{padding:14px}.item{align-items:flex-start}.actions button,.actions .filelabel{flex:1}.stat{flex:1}}
+</style>
+</head>
+<body>
+<main>
+  <div class="top"><div class="logo">🗂️</div><div><h1>JSON Collector</h1><div class="sub">Collect JSON records and export them as a ZIP</div></div></div>
+
+  <section class="panel warning">
+    <strong>Privacy note</strong>
+    <div class="hint" style="color:#ffe8b0">This is a browser-only collector: records stay in this browser's local storage and are not uploaded to a server. Do not store passwords, OTPs, session tokens, cookies, or other secrets here. Use only data you are authorized to handle.</div>
+  </section>
+
+  <section class="panel">
+    <h2>1. Paste JSON</h2>
+    <textarea id="jsonInput" spellcheck="false" placeholder='Paste one JSON object, an array of objects, or newline-separated JSON objects here.
+Example:
+{"mobile":"9876543210","name":"Example"}'></textarea>
+    <div class="actions">
+      <button class="primary" id="addBtn">＋ Add JSON</button>
+      <button class="secondary" id="clearInputBtn">Clear text</button>
+    </div>
+    <p class="hint">Each object must contain a <code>mobile</code> field. An array or newline-separated JSON objects is also supported.</p>
+  </section>
+
+  <section class="panel">
+    <h2>2. Upload JSON files</h2>
+    <div class="actions">
+      <label class="filelabel">＋ Choose JSON files<input id="fileInput" type="file" accept=".json,application/json" multiple></label>
+    </div>
+    <p class="hint">You can select multiple .json files. The filename is generated from each object's mobile field.</p>
+    <div id="status" class="status" role="status" aria-live="polite"></div>
+  </section>
+
+  <section class="panel">
+    <h2>3. Your collection</h2>
+    <div class="stats">
+      <div class="stat"><div class="num" id="count">0</div><small>JSON records</small></div>
+      <div class="stat"><div class="num" id="size">0 B</div><small>Stored data</small></div>
+    </div>
+    <div class="actions">
+      <button class="primary" id="exportBtn">⬇ Export ZIP</button>
+      <button class="secondary" id="exportJsonBtn">Export list as JSON</button>
+      <button class="danger" id="clearAllBtn">Delete all</button>
+    </div>
+    <div id="recordList" class="list" style="margin-top:14px"></div>
+    <div class="foot">Data persists in this browser on this device. It will not automatically appear on another phone or browser. Export a ZIP regularly to keep a backup.</div>
+  </section>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script>
+(() => {
+  const KEY = "jsonCollector.records.v1";
+  const $ = id => document.getElementById(id);
+  let records = load();
+  function load(){ try { const v=JSON.parse(localStorage.getItem(KEY)||"[]"); return Array.isArray(v)?v:[]; } catch { return []; } }
+  function save(){ try { localStorage.setItem(KEY,JSON.stringify(records)); return true; } catch(e) { show("Storage is full or unavailable. Export your records and remove some items.",true); return false; } }
+  function safeName(value){ const s=String(value??"").trim().replace(/[^a-zA-Z0-9_-]/g,"_").slice(0,80); return s || "missing_mobile"; }
+  function formatBytes(n){ if(n<1024)return n+" B"; if(n<1048576)return (n/1024).toFixed(1)+" KB"; return (n/1048576).toFixed(1)+" MB"; }
+  function show(msg,error=false){ const el=$("status"); el.textContent=msg; el.className="status "+(error?"err":"ok"); }
+  function parseMany(text){
+    const t=text.trim(); if(!t) throw new Error("Paste JSON first.");
+    try { const v=JSON.parse(t); if(Array.isArray(v)) return v; return [v]; } catch(first) {
+      const lines=t.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+      if(lines.length>1){ try{return lines.map(line=>JSON.parse(line));}catch(e){} }
+      throw new Error("Invalid JSON. Check commas, quotes, brackets, or paste one JSON object per line.");
+    }
+  }
+  function addObjects(objects,source){
+    if(!objects.length) throw new Error("No JSON objects found.");
+    const prepared=[];
+    for(const obj of objects){
+      if(!obj || typeof obj!=="object" || Array.isArray(obj)) throw new Error("Each entry must be a JSON object.");
+      if(obj.mobile===undefined || obj.mobile===null || String(obj.mobile).trim()==="") throw new Error("Every JSON object must contain a non-empty mobile field.");
+      const mobile=safeName(obj.mobile);
+      prepared.push({id:crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random(),name:mobile+".json",mobile,content:JSON.stringify(obj,null,2),addedAt:new Date().toISOString(),source});
+    }
+    // Keep duplicate mobile numbers as separate records; ZIP names get unique suffixes at export.
+    records.push(...prepared);
+    if(!save()){records.splice(records.length-prepared.length,prepared.length);render();return;}
+    render();
+    show("Added "+prepared.length+" JSON record(s).");
+  }
+  function render(){
+    $("count").textContent=records.length;
+    const total=records.reduce((n,r)=>n+r.content.length,0);
+    $("size").textContent=formatBytes(total);
+    const list=$("recordList"); list.replaceChildren();
+    if(!records.length){const e=document.createElement("div");e.className="empty";e.textContent="No records yet. Paste JSON or upload files to begin.";list.append(e);return;}
+    [...records].reverse().forEach(r=>{
+      const item=document.createElement("div");item.className="item";
+      const info=document.createElement("div");info.style.minWidth="0";
+      const name=document.createElement("div");name.className="filename";name.textContent=r.name;
+      const meta=document.createElement("div");meta.className="meta";meta.textContent="Added "+new Date(r.addedAt).toLocaleString();
+      info.append(name,meta);
+      const del=document.createElement("button");del.className="danger";del.textContent="Remove";del.setAttribute("aria-label","Remove "+r.name);
+      del.addEventListener("click",()=>{records=records.filter(x=>x.id!==r.id);save();render();show("Record removed.");});
+      item.append(info,del);list.append(item);
+    });
+  }
+  function uniqueFilename(name,used){
+    if(!used.has(name)){used.add(name);return name;}
+    const dot=name.lastIndexOf("."),stem=dot>=0?name.slice(0,dot):name,ext=dot>=0?name.slice(dot):"";
+    let i=2,candidate;do{candidate=stem+"_"+i+ext;i++;}while(used.has(candidate));
+    used.add(candidate);return candidate;
+  }
+  $("addBtn").addEventListener("click",()=>{try{addObjects(parseMany($("jsonInput").value),"paste");}catch(e){show(e.message,true);}});
+  $("clearInputBtn").addEventListener("click",()=>{$("jsonInput").value="";});
+  $("fileInput").addEventListener("change",async ev=>{
+    const files=[...ev.target.files];let ok=0,errors=[];
+    for(const file of files){try{const text=await file.text();const objs=parseMany(text);addObjects(objs,file.name);ok+=objs.length;}catch(e){errors.push(file.name+": "+e.message);}}
+    if(errors.length)show((ok?"Added "+ok+" record(s).\n":"")+"Some files could not be added:\n"+errors.join("\n"),true);
+    ev.target.value="";
+  });
+  $("exportBtn").addEventListener("click",async()=>{
+    if(!records.length){show("There are no records to export.",true);return;}
+    if(!window.JSZip){show("ZIP library could not load. Check your internet connection and reload the page.",true);return;}
+    try{
+      const zip=new JSZip(),used=new Set();
+      records.forEach(r=>zip.file(uniqueFilename(r.name,used),r.content));
+      const blob=await zip.generateAsync({type:"blob"});
+      const url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download="Swiggy_JSON.zip";document.body.append(a);a.click();a.remove();URL.revokeObjectURL(url);
+      show("ZIP export prepared: "+records.length+" file(s).");
+    }catch(e){show("ZIP export failed: "+e.message,true);}
+  });
+  $("exportJsonBtn").addEventListener("click",()=>{
+    const blob=new Blob([JSON.stringify(records.map(r=>({filename:r.name,data:JSON.parse(r.content)})),null,2)],{type:"application/json"});
+    const url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download="json_collection.json";document.body.append(a);a.click();a.remove();URL.revokeObjectURL(url);show("JSON collection exported.");
+  });
+  $("clearAllBtn").addEventListener("click",()=>{
+    if(!records.length){show("Collection is already empty.");return;}
+    if(confirm("Delete all "+records.length+" records from this browser? This cannot be undone.")){records=[];save();render();show("All records deleted.");}
+  });
+  render();
+})();
+</script>
+</body>
+</html>
